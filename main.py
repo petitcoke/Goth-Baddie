@@ -48,9 +48,9 @@ bot = discord.Client(intents=intents)
 client = Groq(api_key=GROQ_API_KEY)
 AI_MODEL = "llama-3.3-70b-versatile"
 
-# -------- 3. EMOJI CONFIGURATION (HARDCODED FROM IMAGES) --------
+# -------- 3. COMPREHENSIVE EMOJI CONFIGURATION --------
 EMOJI_MAP = {
-    # Animated (GIF) Emojis
+    # --- ANIMATED GIFS (<a:name:ID>) ---
     "cat_tongue_gif": "1468613506055147774",
     "heartbreak_gif": "1468605021930393744",
     "gothknife_gif": "1468613744816029798",
@@ -62,8 +62,12 @@ EMOJI_MAP = {
     "emoaesthetics_gif": "1468613777351250178",
     "draculaura_gif": "1468613771399532584",
     "bettyboopdance_gif": "1468613765888086160",
+    "thinkweird_gif": "1468626969007751169",
+    "scuffledflustered_gif": "1468626956449874244",
+    "depressed_gif": "1468626954558373973",
+    "elmofire_gif": "1468629304412737631",
 
-    # Static Emojis
+    # --- STATIC EMOTES (<:name:ID>) ---
     "x_pixelated": "1468605809297592524",
     "leave": "1468605545354104934",
     "xxx": "1468605378991358098",
@@ -88,7 +92,47 @@ EMOJI_MAP = {
     "tiredofthisshit": "1468613773404278784",
     "darkanime": "1468613769683796184",
     "gothwoman": "1468613767746162782",
-    "gothnailcare": "1468613764218749020"
+    "gothnailcare": "1468613764218749020",
+    "why": "1468626986661449738",
+    "shy": "1468626983444414494",
+    "gamerpills": "1468626973759766648",
+    "weirdthink": "1468626971138457701",
+    "shyconcern": "1468626965018841301",
+    "waiting": "1468626963374805219",
+    "pepeover": "1468626961508208683",
+    "jerry": "1468626958693961851",
+    "deepfriedcry": "1468626952322551858",
+    "insanelaughing": "1468627006756491306",
+    "pepemegalul": "1468627003598049454",
+    "suicide": "1468627000980934757",
+    "what": "1468626999047094366",
+    "weirdflush": "1468626996710871080",
+    "heyy": "1468626994920165418",
+    "weirdpepe": "1468626992378282036",
+    "suspicious": "1468626990322941963",
+    "dogewtf": "1468629274998341870",
+    "fireskull": "1468629272489889925",
+    "STONKS": "1468629270388670625",
+    "cutestaringpussinboots": "1468629268677398765",
+    "elmorise": "1468629266383114372",
+    "sadcatsleep": "1468629264554528898",
+    "garfieldemote": "1468629262633537844",
+    "dyinglaughred": "1468629260788039780",
+    "chaosgoose": "1468629258745282561",
+    "wormonstring": "1468629256828489808",
+    "beanerz": "1468629254097866953",
+    "chestpain": "1468629252097314857",
+    "OGTriggered": "1468629308577808545",
+    "garfield": "1468629306895765506",
+    "joesuperangry": "1468629301237911594",
+    "trumpcheeto": "1468629299266322595",
+    "showerpls": "1468629297534079127",
+    "hub": "1468629295940370605",
+    "skullissue": "1468629293528645978",
+    "angrygun": "1468629290806677670",
+    "woah": "1468629288990281872",
+    "orangewtf": "1468629282614935716",
+    "drakeyes": "1468629278840197120"
 }
 
 def format_emoji(name, eid):
@@ -112,6 +156,7 @@ def clean_ai_response(text):
 
 def get_emoji_list():
     if not FORMATTED_EMOJIS: return ""
+    # Picking 1-3 random emojis from the massive list
     selected = random.sample(FORMATTED_EMOJIS, min(random.randint(1, 3), len(FORMATTED_EMOJIS)))
     return " ".join(selected)
 
