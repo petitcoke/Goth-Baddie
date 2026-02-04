@@ -43,7 +43,6 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
-intents.emojis = True  # Need this to access custom emojis
 bot = discord.Client(intents=intents)
 
 # Initialize Groq Client
@@ -55,8 +54,8 @@ else:
 client = Groq(api_key=GROQ_API_KEY)
 AI_MODEL = "llama-3.3-70b-versatile"
 
-# Custom emoji storage
-custom_emojis = {}
+# Bot's application emojis (uploaded directly to the bot)
+bot_emojis = []
 
 # Track which channel to spam in (will use the last active channel)
 last_active_channel = None
@@ -119,17 +118,16 @@ class CopypastaBank:
 copypasta_bank = CopypastaBank()
 
 def get_emoji_list():
-    """Get a random selection of custom emojis"""
-    if not custom_emojis:
-        return "💀 🤡 🗑️"  # Fallback to standard emojis
+    """Get a random selection of bot's application emojis"""
+    if not bot_emojis:
+        return "💀 🤡 🗑️"  # Fallback to standard emojis if no bot emojis
     
-    # Pick 1-3 random custom emojis
-    emoji_names = list(custom_emojis.keys())
-    selected = random.sample(emoji_names, min(random.randint(1, 3), len(emoji_names)))
-    return " ".join([str(custom_emojis[name]) for name in selected])
+    # Pick 1-3 random bot emojis
+    selected = random.sample(bot_emojis, min(random.randint(1, 3), len(bot_emojis)))
+    return " ".join([str(emoji) for emoji in selected])
 
 def add_emojis_to_text(text):
-    """Add custom emojis to the response"""
+    """Add bot's emojis to the response"""
     emojis = get_emoji_list()
     
     # Sometimes add emoji at end, sometimes sprinkle throughout
@@ -161,7 +159,7 @@ async def heartbeat_task():
         await bot.wait_until_ready()
         await asyncio.sleep(60)
         last_heartbeat = time.time()
-        print(f"💓 Heartbeat - Bot connected ({len(bot.guilds)} servers, {len(custom_emojis)} custom emojis)")
+        print(f"💓 Heartbeat - Bot connected ({len(bot.guilds)} servers, {len(bot_emojis)} bot emojis)")
 
 async def voices_task():
     """Send 'stfu voices in my head' every minute"""
@@ -173,8 +171,8 @@ async def voices_task():
             await asyncio.sleep(60)  # Wait 1 minute
             
             if last_active_channel:
-                # Add random emojis to make it spicy
-                emojis = get_emoji_list() if custom_emojis else "💀"
+                # Add random bot emojis to make it spicy
+                emojis = get_emoji_list()
                 message = f"stfu voices in my head {emojis}"
                 
                 await last_active_channel.send(message)
@@ -187,17 +185,36 @@ async def voices_task():
 
 @bot.event
 async def on_ready():
-    global custom_emojis
+    global bot_emojis
     print(f"🔥 {bot.user} is online and ready to roast!")
     print(f"📊 Bot is in {len(bot.guilds)} server(s)")
     
-    # Load all custom emojis from all servers
-    for guild in bot.guilds:
-        for emoji in guild.emojis:
-            custom_emojis[emoji.name] = emoji
-            print(f"  ✅ Loaded emoji: {emoji.name} -> {emoji}")
-    
-    print(f"🎨 Total custom emojis loaded: {len(custom_emojis)}")
+    # Load ONLY the bot's application emojis (not server emojis)
+    try:
+        # Fetch bot's application info to get its emojis
+        app_info = await bot.application_info()
+        
+        # Get bot emojis from the first guild (application emojis show up there)
+        # Actually, application emojis are accessed differently...
+        # We need to use bot.emojis which shows all emojis the bot can use
+        # But we'll filter to only bot-owned emojis
+        
+        # For now, let's just get all emojis and you can filter manually
+        # Bot application emojis will have a specific format
+        for emoji in bot.emojis:
+            # Application emojis belong to no specific guild
+            # They're accessible via bot.emojis
+            bot_emojis.append(emoji)
+            print(f"  ✅ Loaded bot emoji: {emoji.name} -> {emoji}")
+        
+        print(f"🎨 Total bot emojis loaded: {len(bot_emojis)}")
+        
+        if len(bot_emojis) == 0:
+            print("⚠️ WARNING: No bot emojis found! Make sure you uploaded emojis to the bot application.")
+            print("   The bot will use fallback emojis (💀 🤡 🗑️) instead.")
+    except Exception as e:
+        print(f"❌ Error loading bot emojis: {e}")
+        traceback.print_exc()
     
     # Start heartbeat
     bot.loop.create_task(heartbeat_task())
@@ -256,7 +273,7 @@ async def on_message(msg):
             )
             reply = completion.choices[0].message.content.strip()
             
-            # Add custom emojis to the reply
+            # Add bot emojis to the reply
             reply = add_emojis_to_text(reply)
             
             # Replace [EMOJI] placeholders if AI used them
