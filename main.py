@@ -17,19 +17,17 @@ def home():
     return "Bot is alive!"
 
 def run_web_server():
-    # Render assigns a port automatically via 'PORT' env var
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
-    t = threading.Thread(target=run_web_server)
+    t = threading.Thread(target=run_web_server, daemon=True)
     t.start()
 
 # -------- 2. SETUP --------
 load_dotenv()
-# FIX: Make sure these match the Variable Names in Render later!
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") # Fixed variable name
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Set up bot
 intents = discord.Intents.default()
@@ -39,8 +37,11 @@ bot = discord.Client(intents=intents)
 # Initialize Groq Client
 if not GROQ_API_KEY:
     print("⚠️ WARNING: GROQ_API_KEY not found. Bot might crash if triggered.")
+else:
+    print(f"✅ GROQ_API_KEY found: {GROQ_API_KEY[:10]}...")
+
 client = Groq(api_key=GROQ_API_KEY)
-AI_MODEL = "llama3-70b-8192"
+AI_MODEL = "llama-3.3-70b-versatile"  # Updated model name
 
 # -------- 3. COPYPASTA & LOGIC --------
 class CopypastaBank:
@@ -67,66 +68,110 @@ class CopypastaBank:
                             if len(text) > 30 and any(w in text.lower() for w in ['you', 'trash', 'bozo']):
                                 all_texts.append(' '.join(text.split()))
                     time.sleep(0.5)
-                except Exception: continue
+                except Exception as e:
+                    print(f"Scrape error: {e}")
+                    continue
             return list(set(all_texts))
-        except Exception: return []
+        except Exception as e:
+            print(f"Scraping failed: {e}")
+            return []
 
     def get_hardcoded_roasts(self):
         return [
-            "Nobody asked + ratio + L + touch grass",
-            "Shut up + you fell off + cringe + cope",
-            "L + ratio + you're not funny + nobody cares",
-            "Take the L + go outside",
-            "Bro thinks he's him (he's not)",
+            "Nobody asked + ratio + L + touch grass 💀",
+            "Shut up + you fell off + cringe + cope 🤡",
+            "L + ratio + you're not funny + nobody cares 🗑️",
+            "Take the L + go outside 💀",
+            "Bro thinks he's him (he's not) 🤡",
+            "Skill issue + cope + seethe 💀",
+            "Didn't ask + don't care + L + ratio 🗑️",
+            "You're the human equivalent of a participation trophy 🤡"
         ]
     
     def load_copypastas(self):
         print("📥 Loading toxic copypastas...")
-        self.roasts = self.scrape_packgod_copypastas() + self.get_hardcoded_roasts()
-        print(f"✅ Loaded {len(self.roasts)} roasts.")
+        scraped = self.scrape_packgod_copypastas()
+        self.roasts = scraped + self.get_hardcoded_roasts()
+        print(f"✅ Loaded {len(self.roasts)} roasts (scraped: {len(scraped)}).")
 
     def get_random_roasts(self, count=1):
         if not self.roasts: return self.get_hardcoded_roasts()[:count]
         return random.sample(self.roasts, min(count, len(self.roasts)))
 
 copypasta_bank = CopypastaBank()
-system_prompt = "YOU ARE PACKGOD. Toxic, fast, aggressive. Short roasts. Use emojis: 💀 🤡 🗑️."
+system_prompt = "YOU ARE PACKGOD. Toxic, fast, aggressive roaster. Keep responses SHORT (1-2 sentences MAX). Use emojis: 💀 🤡 🗑️. Be brutal but creative."
 conversation_history = {}
 
 @bot.event
 async def on_ready():
-    print(f"🔥 {bot.user} is online!")
+    print(f"🔥 {bot.user} is online and ready to roast!")
+    print(f"📊 Bot is in {len(bot.guilds)} server(s)")
 
 @bot.event
 async def on_message(msg):
-    if msg.author == bot.user: return
+    if msg.author == bot.user: 
+        return
+    
+    # Debug logging
+    print(f"📨 Message from {msg.author}: {msg.content[:50]}")
     
     # Simple history management
     hist = conversation_history.setdefault(msg.channel.id, [])
     hist.append({"role": "user", "content": msg.content})
     
+    # Keep only last 10 messages to avoid token limits
+    if len(hist) > 10:
+        hist = hist[-10:]
+        conversation_history[msg.channel.id] = hist
+    
     messages = [{"role": "system", "content": system_prompt}]
     
     # Add flavor
-    flavor = copypasta_bank.get_random_roasts(1)[0][:100]
-    messages.append({"role": "system", "content": f"Roast style: {flavor}"})
-    messages.extend(hist[-6:]) # Keep last 6 messages
+    flavor = copypasta_bank.get_random_roasts(1)[0][:150]
+    messages.append({"role": "system", "content": f"Roast example style: {flavor}"})
+    messages.extend(hist[-6:])  # Keep last 6 messages
 
     try:
+        print(f"🤖 Calling Groq API with model: {AI_MODEL}")
         completion = client.chat.completions.create(
-            messages=messages, model=AI_MODEL, temperature=0.8, max_tokens=80
+            messages=messages, 
+            model=AI_MODEL, 
+            temperature=0.9,
+            max_tokens=100,
+            top_p=1
         )
         reply = completion.choices[0].message.content.strip()
+        
+        # Ensure reply isn't too long
+        if len(reply) > 500:
+            reply = reply[:497] + "..."
+            
         hist.append({"role": "assistant", "content": reply})
+        print(f"✅ Sending reply: {reply[:50]}")
         await msg.channel.send(reply)
+        
     except Exception as e:
-        print(f"Error: {e}")
-        await msg.channel.send("Brain broke. 💀")
+        error_msg = str(e)
+        print(f"❌ ERROR: {error_msg}")
+        
+        # More helpful error messages
+        if "model" in error_msg.lower():
+            await msg.channel.send("Model error. Try 'llama-3.3-70b-versatile' 💀")
+        elif "api" in error_msg.lower() or "key" in error_msg.lower():
+            await msg.channel.send("API key issue. Check your GROQ_API_KEY 🔑")
+        elif "rate" in error_msg.lower() or "limit" in error_msg.lower():
+            await msg.channel.send("Too many requests. Chill. 💀")
+        else:
+            # Fallback to a random roast if API fails
+            fallback = copypasta_bank.get_random_roasts(1)[0]
+            await msg.channel.send(f"{fallback} (API broke btw 💀)")
 
 # -------- 4. STARTUP --------
 if __name__ == '__main__':
+    print("🚀 Starting bot...")
     keep_alive()  # Starts the web server
     if DISCORD_TOKEN:
-        bot.run(DISCORD_TOKEN) # Uses the variable properly
+        print("✅ Discord token found, starting bot...")
+        bot.run(DISCORD_TOKEN)
     else:
-        print("❌ Error: TOKEN not found in environment variables")
+        print("❌ Error: DISCORD_TOKEN not found in environment variables")
