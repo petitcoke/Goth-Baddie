@@ -28,7 +28,7 @@ def keep_alive():
 # -------- 2. SETUP --------
 load_dotenv()
 # FIX: Make sure these match the Variable Names in Render later!
-DISCORD_TOKEN = os.getenv("TOKEN") 
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") # Fixed variable name
 
 # Set up bot
