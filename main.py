@@ -11,8 +11,9 @@ from groq import Groq
 import sys
 import traceback
 import asyncio
+import re
 
-# -------- 1. KEEP ALIVE WEB SERVER (REQUIRED FOR CLOUD) --------
+# -------- 1. KEEP ALIVE WEB SERVER --------
 app = Flask(__name__)
 
 @app.route('/')
@@ -52,8 +53,8 @@ else:
 client = Groq(api_key=GROQ_API_KEY)
 AI_MODEL = "llama-3.3-70b-versatile"
 
-# -------- EMOJI CONFIGURATION (HARDCODED IDs) --------
-# Mapped exactly from your screenshots
+# -------- EMOJI CONFIGURATION --------
+# Strict mapping of Name -> ID
 EMOJI_MAP = {
     # Image 1
     "cat_tongue": "1468613506055147774",
@@ -96,12 +97,20 @@ EMOJI_MAP = {
     "gothnailcare": "1468613764218749020"
 }
 
-# Convert map to list of formatted Discord strings: <:name:ID>
-FORMATTED_EMOJIS = [f"<:{name}:{eid}>" for name, eid in EMOJI_MAP.items()]
+# If you know specific emojis are Animated (GIFs), add their names here to fix the "Broken Image" issue
+ANIMATED_EMOJIS = ["skull_dancing", "bettyboopdance", "fire"] 
+
+def format_emoji(name, eid):
+    # Use <a:name:id> if animated, otherwise <:name:id>
+    prefix = "a" if name in ANIMATED_EMOJIS else ""
+    return f"<{prefix}:{name}:{eid}>"
+
+FORMATTED_EMOJIS = [format_emoji(name, eid) for name, eid in EMOJI_MAP.items()]
 
 last_active_channel = None
 
-# -------- 3. COPYPASTA & LOGIC --------
+# -------- 3. LOGIC & SANITIZATION --------
+
 class CopypastaBank:
     def __init__(self):
         self.roasts = []
@@ -131,7 +140,6 @@ class CopypastaBank:
                     continue
             return list(set(all_texts))
         except Exception as e:
-            print(f"Scraping failed: {e}")
             return []
 
     def get_hardcoded_roasts(self):
@@ -158,19 +166,32 @@ class CopypastaBank:
 
 copypasta_bank = CopypastaBank()
 
+def clean_ai_response(text):
+    """
+    Aggressively removes emojis and special symbols that the AI might hallucinate.
+    Keeps alphanumeric, basic punctuation, and spaces.
+    """
+    # 1. Remove [EMOJI] placeholder explicitly to handle it later
+    text = text.replace("[EMOJI]", "")
+    
+    # 2. Remove standard unicode emojis (ranges of symbols)
+    # This regex removes most unicode symbols/pictographs
+    text = re.sub(r'[^\x00-\x7F]+', '', text)
+    
+    # 3. Clean up double spaces or awkward punctuation left behind
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
 def get_emoji_list():
     """Get a random selection of the HARDCODED emojis"""
     if not FORMATTED_EMOJIS:
-        return "💀" 
-    
-    # Pick 1-3 random emojis from our formatted list
+        return ""
     selected = random.sample(FORMATTED_EMOJIS, min(random.randint(1, 3), len(FORMATTED_EMOJIS)))
     return " ".join(selected)
 
 def add_emojis_to_text(text):
-    """Add bot's emojis to the response"""
+    """Add bot's emojis to the sanitized text"""
     emojis = get_emoji_list()
-    
     if random.random() > 0.5:
         return f"{text} {emojis}"
     else:
@@ -182,8 +203,11 @@ def add_emojis_to_text(text):
         else:
             return f"{text} {emojis}"
 
+# System prompt specifically forbids using normal emojis
 system_prompt = """YOU ARE PACKGOD. Toxic, fast, aggressive roaster. Keep responses SHORT (1-2 sentences MAX). 
-Be brutal but creative. Use [EMOJI] as a placeholder where emojis should go."""
+Be brutal but creative. 
+IMPORTANT: DO NOT use emojis (like 💀 or 🤡). DO NOT use symbols. Only use text.
+I will add the emojis for you later."""
 
 conversation_history = {}
 last_heartbeat = time.time()
@@ -194,7 +218,7 @@ async def heartbeat_task():
         await bot.wait_until_ready()
         await asyncio.sleep(60)
         last_heartbeat = time.time()
-        print(f"💓 Heartbeat - Bot connected. Emoji Count: {len(FORMATTED_EMOJIS)}")
+        print(f"💓 Heartbeat - Bot connected.")
 
 async def voices_task():
     global last_active_channel
@@ -206,19 +230,16 @@ async def voices_task():
                 emojis = get_emoji_list()
                 message = f"stfu voices in my head {emojis}"
                 await last_active_channel.send(message)
-                print(f"🗣️ Sent voices message to {last_active_channel.name}")
+                print(f"🗣️ Sent voices message: {message}")
         except Exception as e:
             print(f"❌ Error in voices_task: {e}")
 
 @bot.event
 async def on_ready():
     print(f"🔥 {bot.user} is online and ready to roast!")
-    print(f"✅ Loaded {len(FORMATTED_EMOJIS)} Hardcoded Application Emojis")
-    
-    # Start background tasks
+    print(f"✅ Loaded {len(FORMATTED_EMOJIS)} Hardcoded Emojis")
     bot.loop.create_task(heartbeat_task())
     bot.loop.create_task(voices_task())
-    print("🗣️ Started tasks")
 
 @bot.event
 async def on_message(msg):
@@ -252,18 +273,19 @@ async def on_message(msg):
                 max_tokens=100,
                 top_p=1
             )
-            reply = completion.choices[0].message.content.strip()
+            raw_reply = completion.choices[0].message.content.strip()
             
-            # Add emojis
-            reply = add_emojis_to_text(reply)
-            if "[EMOJI]" in reply:
-                reply = reply.replace("[EMOJI]", get_emoji_list())
+            # 1. Clean the AI garbage (removes the [] and 🤡 type symbols)
+            clean_reply = clean_ai_response(raw_reply)
             
-            if len(reply) > 500:
-                reply = reply[:497] + "..."
+            # 2. Add OUR custom emojis
+            final_reply = add_emojis_to_text(clean_reply)
+            
+            if len(final_reply) > 1000:
+                final_reply = final_reply[:997] + "..."
                 
-            hist.append({"role": "assistant", "content": reply})
-            await msg.channel.send(reply)
+            hist.append({"role": "assistant", "content": final_reply})
+            await msg.channel.send(final_reply)
             
         except Exception as e:
             print(f"❌ API ERROR: {e}")
