@@ -1,304 +1,53 @@
-import os
-import threading
-from flask import Flask
-from dotenv import load_dotenv
-import discord
-import requests
-from bs4 import BeautifulSoup
-import random
-import time
-from groq import Groq
-import sys
-import traceback
-import asyncio
-import re
+# -------- UPDATED EMOJI CONFIGURATION --------
 
-# -------- 1. KEEP ALIVE WEB SERVER --------
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is alive!"
-
-@app.route('/health')
-def health():
-    return {"status": "healthy", "bot": "online", "uptime": time.time()}, 200
-
-def run_web_server():
-    port = int(os.environ.get('PORT', 8080))
-    import logging
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR)
-    app.run(host='0.0.0.0', port=port, threaded=True)
-
-def keep_alive():
-    t = threading.Thread(target=run_web_server, daemon=True)
-    t.start()
-
-# -------- 2. SETUP --------
-load_dotenv()
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-bot = discord.Client(intents=intents)
-
-if not GROQ_API_KEY:
-    print("⚠️ WARNING: GROQ_API_KEY not found.")
-else:
-    print(f"✅ GROQ_API_KEY found: {GROQ_API_KEY[:10]}...")
-
-client = Groq(api_key=GROQ_API_KEY)
-AI_MODEL = "llama-3.3-70b-versatile"
-
-# -------- EMOJI CONFIGURATION --------
-# Strict mapping of Name -> ID
+# The keys now match your renamed versions with the "_gif" suffix where applicable
 EMOJI_MAP = {
-    # Image 1
-    "cat_tongue": "1468613506055147774",
+    # Animated (GIF) Emojis - Require <a:name:ID>
+    "cat_tongue_gif": "1468613506055147774",
+    "heartbreak_gif": "1468605021930393744",
+    "gothknife_gif": "14686144816029798", # Verify ID if truncated in screen
+    "cutemadhamster_gif": "1468613738159538217",
+    "skull_dancing_gif": "1468613535847288953",
+    "babes_gif": "1468613789523116289",
+    "monsterdrink_gif": "1468613783214886945",
+    "heartflame_gif": "1468613780652167221",
+    "emoaesthetics_gif": "1468613777351250178",
+    "draculaura_gif": "1468613771399532584",
+    "bettyboopdance_gif": "1468613765888086160",
+
+    # Static Emojis - Require <:name:ID>
     "x_pixelated": "1468605809297592524",
     "leave": "1468605545354104934",
     "xxx": "1468605378991358098",
     "America": "1468605175072555090",
-    "heartbreak": "1468605021930393744",
     "thinking_butt": "1468604911804743793",
     "fih": "1468600471743631444",
     "fish": "1468600431906390171",
     "fire": "1468600364717703398",
     "thinking": "1468600282970849383",
     "nerd": "1468600267392942140",
-    # Image 2
     "gothhearteyes": "1468613760590680293",
     "hkgun": "1468613752671961118",
     "halloweenscream": "1468613750843244674",
     "handgun": "1468613748473200784",
-    "gothknife": "1468613744816029798",
-    "cutemadhamster": "1468613738159538217",
     "teethheart": "1468613736322564166",
     "gothswitch": "1468613730932752569",
     "biteme": "1468613728097534156",
     "gothhart": "1468613726088204600",
     "skeletonpeacesign": "1468613684740755638",
-    "skull_dancing": "1468613535847288953",
-    # Image 3
-    "babes": "1468613789523116289",
     "cheekygoth": "1468613787488882699",
-    "youdied": "1468613785425281146",
-    "monsterdrink": "1468613783214886945",
-    "heartflame": "1468613780652167221",
-    "emoaesthetics": "1468613777351250178",
+    "you_died": "1468613785425281146",
     "tiredofthisshit": "1468613773404278784",
-    "draculaura": "1468613771399532584",
     "darkanime": "1468613769683796184",
     "gothwoman": "1468613767746162782",
-    "bettyboopdance": "1468613765888086160",
     "gothnailcare": "1468613764218749020"
 }
 
-# If you know specific emojis are Animated (GIFs), add their names here to fix the "Broken Image" issue
-ANIMATED_EMOJIS = ["skull_dancing", "bettyboopdance", "fire"] 
-
 def format_emoji(name, eid):
-    # Use <a:name:id> if animated, otherwise <:name:id>
-    prefix = "a" if name in ANIMATED_EMOJIS else ""
+    """
+    Automatically detects if an emoji is animated based on the '_gif' suffix.
+    """
+    prefix = "a" if name.endswith("_gif") else ""
     return f"<{prefix}:{name}:{eid}>"
 
 FORMATTED_EMOJIS = [format_emoji(name, eid) for name, eid in EMOJI_MAP.items()]
-
-last_active_channel = None
-
-# -------- 3. LOGIC & SANITIZATION --------
-
-class CopypastaBank:
-    def __init__(self):
-        self.roasts = []
-        self.load_copypastas()
-    
-    def scrape_packgod_copypastas(self):
-        try:
-            all_texts = []
-            base_url = "https://copypastatext.com/tag/packgod"
-            for page in range(1, 2):  
-                url = base_url + "/" if page == 1 else f"{base_url}/page/{page}/"
-                try:
-                    response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-                    if response.status_code != 200: continue
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    articles = soup.find_all('article', class_='post')
-                    if not articles: articles = soup.find_all('div', class_='entry-content')
-                    
-                    for article in articles:
-                        for p in article.find_all('p'):
-                            text = p.get_text().strip()
-                            if len(text) > 30 and any(w in text.lower() for w in ['you', 'trash', 'bozo']):
-                                all_texts.append(' '.join(text.split()))
-                    time.sleep(0.5)
-                except Exception as e:
-                    print(f"Scrape error: {e}")
-                    continue
-            return list(set(all_texts))
-        except Exception as e:
-            return []
-
-    def get_hardcoded_roasts(self):
-        return [
-            "Nobody asked + ratio + L + touch grass",
-            "Shut up + you fell off + cringe + cope",
-            "L + ratio + you're not funny + nobody cares",
-            "Take the L + go outside",
-            "Bro thinks he's him (he's not)",
-            "Skill issue + cope + seethe",
-            "Didn't ask + don't care + L + ratio",
-            "You're the human equivalent of a participation trophy"
-        ]
-    
-    def load_copypastas(self):
-        print("📥 Loading toxic copypastas...")
-        scraped = self.scrape_packgod_copypastas()
-        self.roasts = scraped + self.get_hardcoded_roasts()
-        print(f"✅ Loaded {len(self.roasts)} roasts.")
-
-    def get_random_roasts(self, count=1):
-        if not self.roasts: return self.get_hardcoded_roasts()[:count]
-        return random.sample(self.roasts, min(count, len(self.roasts)))
-
-copypasta_bank = CopypastaBank()
-
-def clean_ai_response(text):
-    """
-    Aggressively removes emojis and special symbols that the AI might hallucinate.
-    Keeps alphanumeric, basic punctuation, and spaces.
-    """
-    # 1. Remove [EMOJI] placeholder explicitly to handle it later
-    text = text.replace("[EMOJI]", "")
-    
-    # 2. Remove standard unicode emojis (ranges of symbols)
-    # This regex removes most unicode symbols/pictographs
-    text = re.sub(r'[^\x00-\x7F]+', '', text)
-    
-    # 3. Clean up double spaces or awkward punctuation left behind
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-def get_emoji_list():
-    """Get a random selection of the HARDCODED emojis"""
-    if not FORMATTED_EMOJIS:
-        return ""
-    selected = random.sample(FORMATTED_EMOJIS, min(random.randint(1, 3), len(FORMATTED_EMOJIS)))
-    return " ".join(selected)
-
-def add_emojis_to_text(text):
-    """Add bot's emojis to the sanitized text"""
-    emojis = get_emoji_list()
-    if random.random() > 0.5:
-        return f"{text} {emojis}"
-    else:
-        words = text.split()
-        if len(words) > 5:
-            insert_pos = random.randint(len(words)//2, len(words)-1)
-            words.insert(insert_pos, emojis)
-            return " ".join(words)
-        else:
-            return f"{text} {emojis}"
-
-# System prompt specifically forbids using normal emojis
-system_prompt = """YOU ARE PACKGOD. Toxic, fast, aggressive roaster. Keep responses SHORT (1-2 sentences MAX). 
-Be brutal but creative. 
-IMPORTANT: DO NOT use emojis (like 💀 or 🤡). DO NOT use symbols. Only use text.
-I will add the emojis for you later."""
-
-conversation_history = {}
-last_heartbeat = time.time()
-
-async def heartbeat_task():
-    global last_heartbeat
-    while True:
-        await bot.wait_until_ready()
-        await asyncio.sleep(60)
-        last_heartbeat = time.time()
-        print(f"💓 Heartbeat - Bot connected.")
-
-async def voices_task():
-    global last_active_channel
-    await bot.wait_until_ready()
-    while True:
-        try:
-            await asyncio.sleep(60)
-            if last_active_channel:
-                emojis = get_emoji_list()
-                message = f"stfu voices in my head {emojis}"
-                await last_active_channel.send(message)
-                print(f"🗣️ Sent voices message: {message}")
-        except Exception as e:
-            print(f"❌ Error in voices_task: {e}")
-
-@bot.event
-async def on_ready():
-    print(f"🔥 {bot.user} is online and ready to roast!")
-    print(f"✅ Loaded {len(FORMATTED_EMOJIS)} Hardcoded Emojis")
-    bot.loop.create_task(heartbeat_task())
-    bot.loop.create_task(voices_task())
-
-@bot.event
-async def on_message(msg):
-    global last_active_channel
-    
-    if msg.author == bot.user: 
-        return
-    
-    last_active_channel = msg.channel
-    
-    try:
-        print(f"📨 Message from {msg.author}: {msg.content[:50]}")
-        
-        hist = conversation_history.setdefault(msg.channel.id, [])
-        hist.append({"role": "user", "content": msg.content})
-        
-        if len(hist) > 10:
-            hist = hist[-10:]
-            conversation_history[msg.channel.id] = hist
-        
-        messages = [{"role": "system", "content": system_prompt}]
-        flavor = copypasta_bank.get_random_roasts(1)[0][:150]
-        messages.append({"role": "system", "content": f"Roast example style: {flavor}"})
-        messages.extend(hist[-6:])
-
-        try:
-            completion = client.chat.completions.create(
-                messages=messages, 
-                model=AI_MODEL, 
-                temperature=0.9,
-                max_tokens=100,
-                top_p=1
-            )
-            raw_reply = completion.choices[0].message.content.strip()
-            
-            # 1. Clean the AI garbage (removes the [] and 🤡 type symbols)
-            clean_reply = clean_ai_response(raw_reply)
-            
-            # 2. Add OUR custom emojis
-            final_reply = add_emojis_to_text(clean_reply)
-            
-            if len(final_reply) > 1000:
-                final_reply = final_reply[:997] + "..."
-                
-            hist.append({"role": "assistant", "content": final_reply})
-            await msg.channel.send(final_reply)
-            
-        except Exception as e:
-            print(f"❌ API ERROR: {e}")
-            fallback = copypasta_bank.get_random_roasts(1)[0]
-            await msg.channel.send(f"{fallback} {get_emoji_list()}")
-    
-    except Exception as e:
-        print(f"❌ CRITICAL ERROR in on_message:")
-        traceback.print_exc()
-
-if __name__ == '__main__':
-    keep_alive()
-    if DISCORD_TOKEN:
-        bot.run(DISCORD_TOKEN, log_handler=None)
-    else:
-        print("❌ Error: DISCORD_TOKEN not found")
