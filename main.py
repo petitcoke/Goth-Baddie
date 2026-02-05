@@ -136,7 +136,6 @@ EMOJI_MAP = {
 }
 
 def format_emoji(name, eid):
-    """Adds 'a' prefix for animated gifs as per Discord API requirements."""
     prefix = "a" if name.endswith("_gif") else ""
     return f"<{prefix}:{name}:{eid}>"
 
@@ -146,17 +145,13 @@ last_active_channel = None
 
 # -------- 4. SANITIZATION & LOGIC --------
 def clean_ai_response(text):
-    """Removes unicode emojis and square boxes the AI tries to generate."""
     text = text.replace("[EMOJI]", "")
-    # Remove non-ASCII characters (standard emojis)
     text = re.sub(r'[^\x00-\x7F]+', '', text)
-    # Clean up excess whitespace
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 def get_emoji_list():
     if not FORMATTED_EMOJIS: return ""
-    # Picking 1-3 random emojis from the massive list
     selected = random.sample(FORMATTED_EMOJIS, min(random.randint(1, 3), len(FORMATTED_EMOJIS)))
     return " ".join(selected)
 
@@ -179,17 +174,7 @@ I will handle the emojis."""
 @bot.event
 async def on_ready():
     print(f"🔥 {bot.user} is active. Loaded {len(FORMATTED_EMOJIS)} emojis.")
-    bot.loop.create_task(voices_task())
-
-async def voices_task():
-    global last_active_channel
-    while True:
-        await asyncio.sleep(60)
-        if last_active_channel:
-            try:
-                msg = f"stfu voices in my head {get_emoji_list()}"
-                await last_active_channel.send(msg)
-            except: pass
+    # Task start removed
 
 @bot.event
 async def on_message(msg):
